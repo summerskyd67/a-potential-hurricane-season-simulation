@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlantic Hurricane Season Simulator</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --accent: #38bdf8;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #22c55e;
+        }
+
+        body {
+            font-family: &#039;Segoe UI&#039;, Tahoma, Geneva, Verdana, sans-serif;
+            background-color: "tok-kw">var(--bg-color);
+            color: "tok-kw">var(--text-color);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        / Sidebar /
+        #sidebar {
+            width: 300px;
+            background-color: "tok-kw">var(--panel-bg);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #334155;
+            overflow-y: auto;
+        }
+
+        h1, h2, h3 { margin-top: 0; }
+        h1 { font-size: 1.2rem; color: "tok-kw">var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+        
+        .stat-box {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 3px solid "tok-kw">var(--accent);
+        }
+
+        .stat-label { font-size: 0.8rem; color: #94a3b8; }
+        .stat-value { font-size: 1.1rem; font-weight: bold; }
+
+        / Main View /
+        #main-view {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            background: #020617;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        / Overlays /
+        #overlay-menu {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        button {
+            background: "tok-kw">var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 10px;
+            transition: transform 0.1s;
+        }
+
+        button:hover { transform: scale(1.05); }
+        button.secondary { background: #475569; color: white; }
+
+        #log-panel {
+            height: 150px;
+            background: #000;
+            border-top: 1px solid #334155;
+            padding: 10px;
+            overflow-y: scroll;
+            font-family: &#039;Courier New&#039;, monospace;
+            font-size: 0.9rem;
+        }
+
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #111; }
+        .log-alert { color: "tok-kw">var(--danger); }
+        .log-info { color: "tok-kw">var(--accent); }
+        .log-warn { color: "tok-kw">var(--warning); }
+
+        / Map Labels /
+        .map-label {
+            position: absolute;
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+            pointer-events: none;
+            text-transform: uppercase;
+        }
+
+        / Legend /
+        #legend {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+        <h1>NOAA Sim v2.0</h1>
+        
+        <div "tok-kw">class="stat-box">
+            <div "tok-kw">class="stat-label">Date</div>
+            <div "tok-kw">class="stat-value" id="date-display">Jun 1, 2024</div>
+        </div>
+
+        <div "tok-kw">class="stat-box">
+            <div "tok-kw">class="stat-label">ENSO Phase</div>
+            <div "tok-kw">class="stat-value" id="enso-display">Neutral</div>
+        </div>
+
+        <div "tok-kw">class="stat-box">
+            <div "tok-kw">class="stat-label">Active Systems</div>
+            <div "tok-kw">class="stat-value" id="active-count">0</div>
+        </div>
+
+        <div "tok-kw">class="stat-box">
+            <div "tok-kw">class="stat-label">Season Stats</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <div><span "tok-kw">class="stat-label">Storms</span><br><span id="stat-storms">0</span></div>
+                <div><span "tok-kw">class="stat-label">Hurricanes</span><br><span id="stat-hurricanes">0</span></div>
+                <div><span "tok-kw">class="stat-label">Cat 3+</span><br><span id="stat-major">0</span></div>
+                <div><span "tok-kw">class="stat-label">ACE</span><br><span id="stat-ace">0.0</span></div>
+            </div>
+        </div>
+
+        <div "tok-kw">class="stat-box">
+            <div "tok-kw">class="stat-label">Retired Names</div>
+            <div id="retired-list" style="font-size: 0.8rem; color: "tok-kw">var(--danger);">"tok-kw">None yet.</div>
+        </div>
+
+        <div style="margin-top: auto;">
+            <button onclick="game.togglePause()" id="pause-btn">Pause</button>
+            <button "tok-kw">class="secondary" onclick="game.reset()">New Season</button>
+        </div>
+    </div>
+
+    <!-- Main View -->
+    <div id="main-view">
+        <div id="canvas-container">
+            <canvas id="simCanvas"></canvas>
+            
+            <!-- Menu Overlay -->
+            <div id="overlay-menu">
+                <h1 style="font-size: 3rem; margin-bottom: 20px;">ATLANTIC HURRICANE SIM</h1>
+                <p style="max-width: 600px; text-align: center; margin-bottom: 30px; color: #94a3b8;">
+                    Simulate an Atlantic hurricane season. Manage environmental factors like ENSO, Wind Shear, "tok-kw">and SST. 
+                    Track storms "tok-kw">from Tropical Depression to Category 6.
+                </p>
+                <button onclick="game.start()">Start Season</button>
+            </div>
+
+            <div id="legend">
+                <div style="color: #fff; margin-bottom: 5px;">Legend</div>
+                <div style="color: cyan;">● Tropical Storm</div>
+                <div style="color: orange;">● Hurricane</div>
+                <div style="color: red;">● Major Hurricane</div>
+                <div style="color: purple;">● Cat 5/6</div>
+                <div style="color: gray;">● Extratropical</div>
+            </div>
+        </div>
+
+        <div id="log-panel" id="log-output">
+            <div "tok-kw">class="log-entry log-info">System initialized. Waiting "tok-kw">for start...</div>
+        </div>
+    </div>
+
+<script>
+/*
+  ATLANTIC HURRICANE SIMULATION ENGINE
+ /
+
+// --- Constants & Data ---
+"tok-kw">const NAMES = [
+    "Andrea", "Barry", "Chantal", "Christian", "Debby", "Ernesto", "Gordon", "Helene", "Isaac", "Julia",
+    "Karl", "Laura", "Michael", "Nadine", "Oscar", "Patty", "Rafael", "Sara", "Tommy", "Valerie",
+    "William", "Abby", "Bret", "Cindy", "Don", "Emily", "Franklin", "Grace", "Henry", "Idalia",
+    "Jose", "Katia", "Lee", "Margot", "Nigel", "Orlene", "Philippe", "Rina", "Sean", "Tammy",
+    "Victor", "Wendy", "Alberto", "Beryl", "Chris", "Diana", "Earl", "Felicia", "Gaston", "Hilary",
+    "Irwin", "Janet", "Kirk", "Linda", "Martin", "Nana", "Owen", "Paula", "Randy", "Shary",
+    "Tobias", "Vanessa", "Walter"
+];
+
+"tok-kw">const REAL_RECORDS = {
+    fastestPressure: 882, // Wilma
+    strongestWind: 190,   // Allen/Michael(modern era)
+    costliest: 127000000000, // Katrina
+    deadliest: 30000 // Great Labor Day(fictional cap "tok-kw">for sim realism usually lower, but keeping record context)
+};
+
+"tok-kw">const CITIES = [
+    { name: "Miami", x: 0.22, y: 0.85 },
+    { name: "Key West", x: 0.18, y: 0.90 },
+    { name: "New Orleans", x: 0.25, y: 0.75 },
+    { name: "Houston", x: 0.15, y: 0.78 },
+    { name: "Charleston", x: 0.28, y: 0.65 },
+    { name: "Savannah", x: 0.26, y: 0.68 },
+    { name: "Wilmington", x: 0.29, y: 0.62 },
+    { name: "Norfolk", x: 0.32, y: 0.55 },
+    { name: "New York", x: 0.35, y: 0.40 },
+    { name: "Boston", x: 0.38, y: 0.35 },
+    { name: "Halifax", x: 0.40, y: 0.25 },
+    { name: "Havana", x: 0.12, y: 0.65 },
+    { name: "Nassau", x: 0.20, y: 0.72 },
+    { name: "San Juan", x: 0.45, y: 0.85 }
+];
+
+// --- Helper Functions ---
+"tok-kw">const rand = (min, max) => Math.random()  (max - min) + min;
+"tok-kw">const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+
+// --- Classes ---
+
+"tok-kw">class Environment {
+    constructor() {
+        this.date = "tok-kw">new Date(2024, 5, 1); // June 1st
+        this.dayCount = 0;
+        
+        // Global Factors
+        this.enso = 0; // -1 (La Nina) to 1 (El Nino)
+        this.sstAnomaly = 0.5; // Sea Surface Temp Anomaly
+        this.windShear = 10; // Knots(Lower "tok-kw">is better "tok-kw">for storms)
+        this.humidity = 65; // %
+        this.saharanDust = 20; // % (Higher suppresses storms)
+        
+        // Seasonal Modifiers
+        this.isPeak = "tok-kw">false;
+    }
+
+    update() {
+        this.dayCount++;
+        this.date.setDate(this.date.getDate() + 1);
+
+        // Seasonal Cycle
+        "tok-kw">const month = this.date.getMonth();
+        "tok-kw">if (month >= 6 && month <= 8) this.isPeak = "tok-kw">true;
+        "tok-kw">else this.isPeak = "tok-kw">false;
+
+        // Randomly fluctuate environmental factors slightly
+        this.windShear += rand(-2, 2);
+        this.windShear = clamp(this.windShear, 5, 40);
+        
+        this.humidity += rand(-3, 3);
+        this.humidity = clamp(this.humidity, 40, 90);
+
+        this.saharanDust += rand(-5, 5);
+        this.saharanDust = clamp(this.saharanDust, 0, 100);
+
+        // ENSO drift
+        this.enso += rand(-0.05, 0.05);
+        this.enso = clamp(this.enso, -1.5, 1.5);
+
+        // Impact of ENSO on environment
+        // El Nino(positive) = High Shear, Low Storms
+        // La Nina(negative) = Low Shear, High Storms
+        "tok-kw">if (this.enso > 0.5) {
+            this.windShear += 5;
+            this.sstAnomaly -= 0.1;
+        } "tok-kw">else "tok-kw">if (this.enso < -0.5) {
+            this.windShear -= 5;
+            this.sstAnomaly += 0.1;
+        }
+    }
+
+    getSpawnChance() {
+        "tok-kw">let base = 0.02; // 2% chance per day early season
+        "tok-kw">if (this.isPeak) base = 0.05;
+        
+        // Adjust by factors
+        "tok-kw">if (this.windShear > 20) base = 0.2;
+        "tok-kw">if (this.saharanDust > 60) base = 0.3;
+        "tok-kw">if (this.humidity < 50) base = 0.5;
+        "tok-kw">if (this.sstAnomaly > 1.0) base = 1.5;
+
+        "tok-kw">return base;
+    }
+}
+
+"tok-kw">class Storm {
+    constructor(id, name, startX, startY) {
+        this.id = id;
+        this.name = name;
+        this.x = startX; // 0-1 (Longitude)
+        this.y = startY; // 0-1 (Latitude, inverted visually usually, but here 0=top)
+        
+        // Physics
+        this.vx = rand(-0.002, -0.0005); // Generally moves West
+        this.vy = rand(0.0005, 0.002);   // Generally moves North/Northwest
+        
+        this.intensity = 35; // Winds "tok-kw">in mph
+        this.pressure = 1005; // mb
+        this.category = 0; // 0: TD, 1: TS, 2: Cat1, etc.
+        this.lifeStage = "Tropical Depression";
+        
+        this.history = []; // For tracking path
+        this.dissipated = "tok-kw">false;
+        this.retired = "tok-kw">false;
+        this.landfall = "tok-kw">null;
+        this.damage = 0;
+        this.casualties = 0;
+        
+        this.age = 0;
+        this.maxIntensity = 35;
+    }
+
+    update(env) {
+        this.age++;
+        this.history.push({x: this.x, y: this.y});
+
+        // Movement Logic(Steering Flow)
+        // Add some randomness(Brownian motion)
+        this.x += this.vx + rand(-0.0005, 0.0005);
+        this.y += this.vy + rand(-0.0005, 0.0005);
+
+        // Intensity Logic
+        "tok-kw">let strength = 0;
+        
+        // Favorable conditions
+        "tok-kw">if (env.sstAnomaly > 0.5 && env.humidity > 60 && env.windShear < 15) {
+            strength = 1.05;
+        } "tok-kw">else {
+            strength = 0.95;
+        }
+
+        // Land interaction
+        "tok-kw">if (this.isOnLand()) {
+            strength = 0.85; // Rapid weakening
+            "tok-kw">if (!this.landfall) {
+                this.landfall = {
+                    location: this.getNearestCity(),
+                    wind: this.intensity,
+                    pressure: this.pressure
+                };
+                this.calculateImpact();
+            }
+        }
+
+        // Apply changes
+        this.intensity = strength;
+        this.intensity = Math.max(0, this.intensity);
+        
+        // Pressure relationship(Simplified)
+        this.pressure = 1005 - (this.intensity  1.5);
+
+        // Update Category
+        this.updateCategory();
+
+        // Lifecycle
+        "tok-kw">if (this.intensity < 34) {
+            this.lifeStage = "Tropical Depression";
+            this.category = 0;
+        } "tok-kw">else "tok-kw">if (this.intensity < 74) {
+            this.lifeStage = "Tropical Storm";
+            this.category = 1;
+        } "tok-kw">else {
+            this.lifeStage = "Hurricane";
+        }
+
+        // Extratropical Transition
+        "tok-kw">if (this.y < 0.3 && this.intensity > 50) {
+            this.lifeStage = "Extratropical Cyclone";
+            this.vx = -1; // Start moving East
+            this.vy = -1;
+            this.intensity = 1.05; // Gain energy "tok-kw">from temp gradient
+        }
+
+        // Dissipation
+        "tok-kw">if (this.intensity < 20 && (this.y < 0.1 || this.y > 0.9 || this.isOnLand())) {
+            this.dissipated = "tok-kw">true;
+            this.lifeStage = "Dissipated";
+        }
+
+        "tok-kw">if (this.intensity > this.maxIntensity) {
+            this.maxIntensity = this.intensity;
+        }
+    }
+
+    updateCategory() {
+        "tok-kw">if (this.intensity >= 157) this.category = 6;
+        "tok-kw">else "tok-kw">if (this.intensity >= 130) this.category = 5;
+        "tok-kw">else "tok-kw">if (this.intensity >= 111) this.category = 4;
+        "tok-kw">else "tok-kw">if (this.intensity >= 96) this.category = 3;
+        "tok-kw">else "tok-kw">if (this.intensity >= 74) this.category = 2;
+        "tok-kw">else "tok-kw">if (this.intensity >= 39) this.category = 1;
+        "tok-kw">else this.category = 0;
+    }
+
+    isOnLand() {
+        // Simplified land mask based on coordinates
+        // Caribbean/Central America roughly x: 0.1-0.3, y: 0.6-0.8
+        // Florida x: 0.2-0.25, y: 0.75-0.9
+        // US East Coast x: 0.3-0.4, y: 0.3-0.7
+        
+        // Very rough box collision "tok-kw">for demo purposes
+        "tok-kw">if (this.x > 0.1 && this.x < 0.35 && this.y > 0.6 && this.y < 0.9) "tok-kw">return "tok-kw">true; // Caribbean/Gulf
+        "tok-kw">if (this.x > 0.35 && this.x < 0.45 && this.y > 0.2 && this.y < 0.8) "tok-kw">return "tok-kw">true; // US East Coast
+        
+        "tok-kw">return "tok-kw">false;
+    }
+
+    getNearestCity() {
+        "tok-kw">let minDist = Infinity;
+        "tok-kw">let nearest = "Open Ocean";
+        "tok-kw">for ("tok-kw">let city of CITIES) {
+            "tok-kw">let dx = this.x - city.x;
+            "tok-kw">let dy = this.y - city.y;
+            "tok-kw">let dist = Math.sqrt(dxdx + dydy);
+            "tok-kw">if (dist < minDist) {
+                minDist = dist;
+                nearest = city.name;
+            }
+        }
+        "tok-kw">return nearest;
+    }
+
+    calculateImpact() {
+        // Simple damage model
+        "tok-kw">let baseDamage = 0;
+        "tok-kw">if (this.category >= 3) baseDamage = 10000000000; // 10 Billion
+        "tok-kw">else "tok-kw">if (this.category >= 1) baseDamage = 1000000000; // 1 Billion
+        
+        // Multipliers
+        "tok-kw">let popMult = 1.0;
+        "tok-kw">if (this.landfall.location === "Miami") popMult = 2.5;
+        "tok-kw">if (this.landfall.location === "New Orleans") popMult = 3.0;
+        "tok-kw">if (this.landfall.location === "New York") popMult = 4.0;
+
+        this.damage = baseDamage  popMult  (this.intensity / 100);
+        
+        // Casualties(very rough estimate)
+        this.casualties = Math.floor(this.damage / 1000000000)  rand(5, 50);
+        "tok-kw">if (this.category >= 4) this.casualties = 3;
+    }
+
+    shouldRetire() {
+        "tok-kw">if (this.damage > 50000000000) "tok-kw">return "tok-kw">true; // $50B+
+        "tok-kw">if (this.casualties > 100) "tok-kw">return "tok-kw">true;
+        "tok-kw">if (this.category >= 5 && this.damage > 10000000000) "tok-kw">return "tok-kw">true;
+        "tok-kw">return "tok-kw">false;
+    }
+}
+
+"tok-kw">class Game {
+    constructor() {
+        this.canvas = document.getElementById(&#039;simCanvas&#039;);
+        this.ctx = this.canvas.getContext(&#039;2d&#039;);
+        this.env = "tok-kw">new Environment();
+        this.storms = [];
+        this.activeNames = [...NAMES];
+        this.retiredNames = [];
+        this.running = "tok-kw">false;
+        this.speed = 100; // ms per tick
+        
+        this.stats = {
+            storms: 0,
+            hurricanes: 0,
+            major: 0,
+            ace: 0,
+            records: {
+                wind: 0,
+                pressure: 9999,
+                cost: 0
+            }
+        };
+
+        this.resize();
+        window.addEventListener(&#039;resize&#039;, () => this.resize());
+        
+        this.loopId = "tok-kw">null;
+    }
+
+    resize() {
+        this.canvas.width = this.canvas.parentElement.clientWidth;
+        this.canvas.height = this.canvas.parentElement.clientHeight;
+    }
+
+    start() {
+        document.getElementById(&#039;overlay-menu&#039;).style.display = &#039;none&#039;;
+        this.running = "tok-kw">true;
+        this.log("Season started. Monitoring Atlantic basin...", "info");
+        this.loop();
+    }
+
+    reset() {
+        this.running = "tok-kw">false;
+        cancelAnimationFrame(this.loopId);
+        this.env = "tok-kw">new Environment();
+        this.storms = [];
+        this.activeNames = [...NAMES];
+        this.retiredNames = [];
+        this.stats = { storms: 0, hurricanes: 0, major: 0, ace: 0, records: { wind: 0, pressure: 9999, cost: 0 } };
+        this.updateUI();
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        document.getElementById(&#039;overlay-menu&#039;).style.display = &#039;flex&#039;;
+        document.getElementById(&#039;log-panel&#039;).innerHTML = &#039;<div "tok-kw">class="log-entry log-info">System reset. Ready.</div>&#039;;
+    }
+
+    togglePause() {
+        this.running = !this.running;
+        "tok-kw">if (this.running) this.loop();
+        "tok-kw">else cancelAnimationFrame(this.loopId);
+    }
+
+    loop() {
+        "tok-kw">if (!this.running) "tok-kw">return;
+
+        this.env.update();
+        
+        // Spawn Logic
+        "tok-kw">if (Math.random() < this.env.getSpawnChance() && this.storms.length < 15) {
+            this.spawnStorm();
+        }
+
+        // Update Storms
+        "tok-kw">for ("tok-kw">let i = this.storms.length - 1; i >= 0; i--) {
+            "tok-kw">let s = this.storms[i];
+            s.update(this.env);
+            
+            // Calculate ACE(Accumulated Cyclone Energy)
+            "tok-kw">if (s.category >= 1) {
+                this.stats.ace += Math.pow((s.intensity / 10), 2) / 10000;
+            }
+
+            // Retirement Check
+            "tok-kw">if (s.shouldRetire() && !s.retired) {
+                s.retired = "tok-kw">true;
+                this.retiredNames.push(s.name);
+                this.activeNames = this.activeNames.filter(n => n !== s.name);
+                this.log(NAME RETIRED: ${s.name}. Reasons: Catastrophic impact., "alert");
+            }
+
+            // Cleanup
+            "tok-kw">if (s.dissipated) {
+                this.storms.splice(i, 1);
+            }
+        }
+
+        this.render();
+        this.updateUI();
+        
+        this.loopId = requestAnimationFrame(() => this.loop());
+    }
+
+    spawnStorm() {
+        // Spawn off the coast of Africa usually
+        "tok-kw">const startX = rand(0.4, 0.8);
+        "tok-kw">const startY = rand(0.5, 0.85);
+        
+        "tok-kw">let name = "Unknown";
+        "tok-kw">if (this.activeNames.length > 0) {
+            name = this.activeNames.shift();
+        } "tok-kw">else {
+            name = "Unnamed System " + (this.stats.storms + 1);
+        }
+
+        "tok-kw">const storm = "tok-kw">new Storm(this.stats.storms + 1, name, startX, startY);
+        this.storms.push(storm);
+        this.stats.storms++;
+        
+        this.log(Formation: ${storm.name} developed near ${Math.round(startX100)}°W ${Math.round(startY100)}°N, "info");
+    }
+
+    render() {
+        "tok-kw">const w = this.canvas.width;
+        "tok-kw">const h = this.canvas.height;
+
+        // Clear
+        this.ctx.fillStyle = &#039;#020617&#039;;
+        this.ctx.fillRect(0, 0, w, h);
+
+        // Draw Grid/Map Background
+        this.drawMap(w, h);
+
+        // Draw Storms
+        this.storms.forEach(s => {
+            this.drawStorm(s, w, h);
+        });
+    }
+
+    drawMap(w, h) {
+        this.ctx.strokeStyle = &#039;#1e293b&#039;;
+        this.ctx.lineWidth = 1;
+        
+        // Grid lines every 20%
+        "tok-kw">for("tok-kw">let i=0; i<=1; i+=0.2) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(iw, 0);
+            this.ctx.lineTo(iw, h);
+            this.ctx.stroke();
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, ih);
+            this.ctx.lineTo(w, ih);
+            this.ctx.stroke();
+        }
+
+        // Draw Landmasses(Simplified Polygons)
+        this.ctx.fillStyle = &#039;#0f172a&#039;;
+        this.ctx.strokeStyle = &#039;#334155&#039;;
+        this.ctx.lineWidth = 2;
+
+        // North America(Simplified)
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(0.45w, 0);
+        this.ctx.lineTo(0.45w, 0.3h); // Greenlandish
+        this.ctx.lineTo(0.4w, 0.35h);
+        this.ctx.lineTo(0.35w, 0.4h); // Canada
+        this.ctx.lineTo(0.32w, 0.55h); // Maine
+        this.ctx.lineTo(0.3w, 0.65h); // Carolinas
+        this.ctx.lineTo(0.25w, 0.75h); // Florida tip
+        this.ctx.lineTo(0.15w, 0.78h); // Texas
+        this.ctx.lineTo(0.1w, 0.75h); // Mexico
+        this.ctx.lineTo(0.1w, 0.65h); // Central America
+        this.ctx.lineTo(0.15w, 0.6h); // Cuba area
+        this.ctx.lineTo(0.2w, 0.65h); // Hispaniola
+        this.ctx.lineTo(0.25w, 0.65h); // Jamaica
+        this.ctx.lineTo(0.3w, 0.65h); // Back to sea
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        // Labels
+        this.ctx.fillStyle = &#039;#334155&#039;;
+        this.ctx.font = &#039;12px Arial&#039;;
+        this.ctx.fillText("ATLANTIC OCEAN", 0.5w, 0.5h);
+        this.ctx.fillText("CARIBBEAN SEA", 0.2w, 0.7h);
+    }
+
+    drawStorm(s, w, h) {
+        "tok-kw">const x = s.x  w;
+        "tok-kw">const y = s.y  h;
+
+        // Draw Trail
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = &#039;rgba(255, 255, 255, 0.2)&#039;;
+        this.ctx.lineWidth = 2;
+        "tok-kw">if (s.history.length > 0) {
+            this.ctx.moveTo(s.history[0].x  w, s.history[0].y  h);
+            "tok-kw">for ("tok-kw">let p of s.history) {
+                this.ctx.lineTo(p.x  w, p.y  h);
+            }
+        }
+        this.ctx.stroke();
+
+        // Draw Icon
+        "tok-kw">let color = &#039;#00ffff&#039;; // Cyan(TS)
+        "tok-kw">if (s.category >= 1) color = &#039;#ffaa00&#039;; // Orange(Cat 1)
+        "tok-kw">if (s.category >= 3) color = &#039;#ff0000&#039;; // Red(Cat 3)
+        "tok-kw">if (s.category >= 5) color = &#039;#aa00ff&#039;; // Purple(Cat 5)
+        "tok-kw">if (s.lifeStage.includes("Extratropical")) color = &#039;#aaaaaa&#039;;
+
+        // Procedural Satellite Look(Spiral)
+        this.ctx.save();
+        this.ctx.translate(x, y);
+        this.ctx.rotate(Date.now() / 500); // Rotate animation
+        
+        // Core
+        this.ctx.fillStyle = color;
+        this.ctx.globalAlpha = 0.8;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 4 + (s.intensity/20), 0, Math.PI  2);
+        this.ctx.fill();
+
+        // Spiral Arms
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        "tok-kw">for("tok-kw">let i=0; i<360; i+=10) {
+            "tok-kw">let r = i  0.1 + (s.intensity  0.2);
+            "tok-kw">let px = Math.cos(i  Math.PI/180)  r;
+            "tok-kw">let py = Math.sin(i  Math.PI/180) * r;
+            "tok-kw">if(i===0) this.ctx.moveTo(px, py);
+            "tok-kw">else this.ctx.lineTo(px, py);
+        }
+        this.ctx.stroke();
+        
+        this.ctx.restore();
+
+        // Label
+        this.ctx.fillStyle = &#039;#fff&#039;;
+        this.ctx.font = &#039;bold 12px Arial&#039;;
+        this.ctx.fillText(s.name, x + 10, y - 10);
+        
+        // Stats Label
+        this.ctx.font = &#039;10px Arial&#039;;
+        this.ctx.fillStyle = &#039;#ccc&#039;;
+        this.ctx.fillText(${Math.round(s.intensity)}mph, x + 10, y + 2);
+    }
+
+    updateUI() {
+        // Date
+        "tok-kw">const options = { year: &#039;numeric&#039;, month: &#039;short&#039;, day: &#039;numeric&#039; };
+        document.getElementById(&#039;date-display&#039;).innerText = this.env.date.toLocaleDateString(&#039;en-US&#039;, options);
+
+        // ENSO
+        "tok-kw">let ensoText = "Neutral";
+        "tok-kw">let ensoColor = "#fff";
+        "tok-kw">if (this.env.enso > 0.5) { ensoText = "El Niño"; ensoColor = "#ef4444"; }
+        "tok-kw">else "tok-kw">if (this.env.enso < -0.5) { ensoText = "La Niña"; ensoColor = "#38bdf8"; }
+        "tok-kw">const ensoEl = document.getElementById(&#039;enso-display&#039;);
+        ensoEl.innerText = ensoText;
+        ensoEl.style.color = ensoColor;
+
+        // Counts
+        document.getElementById(&#039;active-count&#039;).innerText = this.storms.length;
+        document.getElementById(&#039;stat-storms&#039;).innerText = this.stats.storms;
+        document.getElementById(&#039;stat-hurricanes&#039;).innerText = this.stats.hurricanes;
+        document.getElementById(&#039;stat-major&#039;).innerText = this.stats.major;
+        document.getElementById(&#039;stat-ace&#039;).innerText = this.stats.ace.toFixed(2);
+
+        // Retired
+        "tok-kw">const retiredEl = document.getElementById(&#039;retired-list&#039;);
+        "tok-kw">if (this.retiredNames.length > 0) {
+            retiredEl.innerText = this.retiredNames.join(", ");
+        } "tok-kw">else {
+            retiredEl.innerText = ""tok-kw">None yet.";
+        }
+    }
+
+    log(msg, "tok-kw">type="info") {
+        "tok-kw">const panel = document.getElementById(&#039;log-panel&#039;);
+        "tok-kw">const div = document.createElement(&#039;div&#039;);
+        div.className = log-entry log-${"tok-kw">type};
+        div.innerText = [${this.env.date.toLocaleDateString()}] ${msg};
+        panel.prepend(div);
+    }
+}
+
+// Initialize
+"tok-kw">const game = "tok-kw">new Game();
+
+</script>
+</body>
+</html>
